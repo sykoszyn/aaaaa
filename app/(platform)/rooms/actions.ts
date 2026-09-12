@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { z } from "zod";
 import { createMatch } from "@/lib/games/core/engine";
-import { isGameImplemented } from "@/lib/games/core/registry";
+import { isGameImplemented } from "@/lib/games";
 import { requireProfile } from "@/lib/auth/session";
 import { createClient } from "@/lib/supabase/server";
 import type { BotDifficulty, GameSlug } from "@/types/database";

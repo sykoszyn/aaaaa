@@ -23,17 +23,38 @@ vacío. `isGameImplemented()` controla en toda la UI si un juego muestra
 "Jugar" o "Próximamente" — es honesto sobre qué funciona, no hay ningún
 placeholder que simule una funcionalidad terminada.
 
-## Fase 2 — UNO
+## Fase 2 — UNO ✅
 
-- `lib/games/uno/` implementando `GameDefinition<UnoState, UnoMove>`.
-- Mazo completo (colores, números, Skip, Reverse, +2, Wild, Wild+4), reglas
-  de turno/dirección/robo/descarte/cambio de color/UNO/victoria.
-- `toPlayerView` oculta las manos de los demás jugadores.
-- Bots con 3 dificultades (`lib/games/uno/bot.ts`, usando
-  `pickByDifficulty` de `lib/games/core/bot.ts`).
-- UI: `components/games/uno/` — mano propia animada, cartas de rivales de
-  espaldas, carta actual, indicador de turno/dirección.
-- Tests: turnos, cada carta especial, robo, condición de victoria.
+- `lib/games/uno/` implementa `GameDefinition<UnoState, UnoMovePayload>`
+  completo: mazo de 108 cartas, turnos/dirección, Skip, Reverse (actúa como
+  Skip en partidas de 2), Draw Two, Wild, Wild Draw Four (bloqueado si el
+  jugador tiene una carta del color actual), robo con reshuffle del
+  descarte, y el ciclo de "cantar UNO" / "desafiar UNO" con penalización de
+  2 cartas.
+- `toPlayerView` oculta las manos rivales — solo expone `cardCount` por
+  asiento; el mazo restante también es solo un contador.
+- Bots (`lib/games/uno/bot.ts`) usan `pickByDifficulty`: Easy elige al azar
+  entre las jugadas legales, Normal/Hard priorizan cartas de acción y
+  eligen el color con más cartas propias al jugar un wild.
+- Registrado vía `lib/games/index.ts` (barrel de registro) — todo el resto
+  de la plataforma (salas, matchmaking, Home) ya lo detecta automáticamente
+  a través de `isGameImplemented("uno")`.
+- UI (`components/games/uno/`): mano propia clickeable, rivales con mano
+  boca abajo y contador, mazo/descarte central, selector de color para
+  cartas especiales, botón de "Cantar UNO" y de "¡No cantó UNO!" para
+  desafiar, pantalla de resultado con puntaje.
+- Ruta genérica de partida: `app/(platform)/rooms/[roomId]/page.tsx` alterna
+  entre lobby y `components/games/game-board.tsx` según `room.status`; los
+  jugadores no-host se enteran de que la partida arrancó por Realtime
+  (`RoomLobby` llama a `router.refresh()` al detectar el cambio de estado).
+- Simplificaciones documentadas en el código (`lib/games/uno/rules.ts`):
+  robar siempre termina el turno (no hay sub-estado "robé, ¿juego o paso?"),
+  y si la primera carta del mazo es un wild no dispara su efecto, solo fija
+  el color inicial.
+- Tests (`lib/games/uno/rules.test.ts`, 32 casos): reparto y determinismo
+  del seed, legalidad de cada tipo de carta, efecto de cada carta especial
+  (incluida la regla de Reverse=Skip en 2 jugadores), reshuffle del mazo,
+  ciclo de UNO call/challenge, condición de victoria y puntaje final.
 
 ## Fase 3 — Truco Argentino
 

@@ -1,8 +1,10 @@
 import "server-only";
 
 import { createAdminClient } from "@/lib/supabase/admin";
+// Barrel import (not "./registry" directly) so this module's own bundle
+// always registers every game — see lib/games/index.ts.
+import { getGameDefinition } from "@/lib/games";
 import type { Database, GameSlug } from "@/types/database";
-import { getGameDefinition } from "./registry";
 import type { BotDifficulty, GameDefinition, GameMove, GamePlayerRef } from "./types";
 
 type EngineResult<T> = { ok: true; data: T } | { ok: false; error: string };

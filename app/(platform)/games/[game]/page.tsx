@@ -5,7 +5,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { JoinByCodeForm } from "@/components/rooms/join-by-code-form";
 import { CreateRoomForm } from "@/components/rooms/create-room-form";
 import { PublicRoomsList } from "@/components/rooms/public-rooms-list";
-import { isGameImplemented } from "@/lib/games/core/registry";
+import { isGameImplemented } from "@/lib/games";
 import { createClient } from "@/lib/supabase/server";
 import type { GameSlug } from "@/types/database";
 

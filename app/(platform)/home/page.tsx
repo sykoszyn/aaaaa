@@ -6,7 +6,7 @@ import { LeaderboardPreview } from "@/components/leaderboards/leaderboard-previe
 import { FriendsOnlineList } from "@/components/players/friends-online-list";
 import { PublicRoomsList } from "@/components/rooms/public-rooms-list";
 import { Button } from "@/components/ui/button";
-import { isGameImplemented } from "@/lib/games/core/registry";
+import { isGameImplemented } from "@/lib/games";
 import { getCurrentProfile } from "@/lib/auth/session";
 import { getActiveRoomForProfile, getOnlineFriends, getTopLeaderboard, listPublicRooms } from "@/lib/rooms/queries";
 import { createClient } from "@/lib/supabase/server";

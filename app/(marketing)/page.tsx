@@ -2,7 +2,7 @@ import { ArrowRight } from "lucide-react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { GameCard } from "@/components/games/game-card";
-import { isGameImplemented } from "@/lib/games/core/registry";
+import { isGameImplemented } from "@/lib/games";
 import { createClient } from "@/lib/supabase/server";
 import type { GameSlug } from "@/types/database";
 

@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { GameCard } from "@/components/games/game-card";
-import { isGameImplemented } from "@/lib/games/core/registry";
+import { isGameImplemented } from "@/lib/games";
 import { createClient } from "@/lib/supabase/server";
 import type { GameSlug } from "@/types/database";
 

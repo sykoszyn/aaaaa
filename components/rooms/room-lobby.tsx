@@ -1,7 +1,8 @@
 "use client";
 
 import { Bot, Check, Crown, UserX, X } from "lucide-react";
-import { useTransition } from "react";
+import { useRouter } from "next/navigation";
+import { useEffect, useRef, useTransition } from "react";
 import { addBot, leaveRoom, removePlayer, startMatch, toggleReady } from "@/app/(platform)/rooms/actions";
 import { Avatar } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
@@ -40,6 +41,20 @@ export function RoomLobby({
   });
   const { push } = useToast();
   const [pending, startTransition] = useTransition();
+  const router = useRouter();
+
+  // El host dispara el cambio a "in_progress" y ve el tablero al instante
+  // (revalidatePath refresca su propia vista). El resto de los jugadores
+  // solo se enteran por Realtime — sin este efecto se quedarían mirando el
+  // lobby vacío. router.refresh() vuelve a pedir el Server Component de
+  // esta ruta, que ya elige renderizar el tablero en vez del lobby.
+  const wasWaiting = useRef(room.status === "waiting");
+  useEffect(() => {
+    if (wasWaiting.current && room.status !== "waiting") {
+      router.refresh();
+    }
+    wasWaiting.current = room.status === "waiting";
+  }, [room.status, router]);
 
   const isHost = room.host_id === selfProfileId;
   const self = players.find((p) => p.profile_id === selfProfileId);

@@ -1,4 +1,6 @@
+import { TrucoTable } from "@/components/games/truco/truco-table";
 import { UnoTable } from "@/components/games/uno/uno-table";
+import type { TrucoPlayerView } from "@/lib/games/truco";
 import type { UnoPlayerView } from "@/lib/games/uno";
 import type { GameSlug } from "@/types/database";
 
@@ -32,6 +34,16 @@ export function GameBoard({ gameSlug, matchId, roomId, seat, initialView, player
           roomId={roomId}
           seat={seat}
           initialView={initialView as UnoPlayerView}
+          players={players}
+        />
+      );
+    case "truco":
+      return (
+        <TrucoTable
+          matchId={matchId}
+          roomId={roomId}
+          seat={seat}
+          initialView={initialView as TrucoPlayerView}
           players={players}
         />
       );

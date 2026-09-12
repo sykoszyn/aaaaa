@@ -56,12 +56,36 @@ placeholder que simule una funcionalidad terminada.
   (incluida la regla de Reverse=Skip en 2 jugadores), reshuffle del mazo,
   ciclo de UNO call/challenge, condición de victoria y puntaje final.
 
-## Fase 3 — Truco Argentino
+## Fase 3 — Truco Argentino ✅
 
-- Cartas españolas, jerarquía real, mano/ronda, truco/retruco/vale cuatro,
-  envido/real envido/falta envido, flor opcional, equipos 2v2.
-- Mesa visual con identidad propia (no genérica).
-- Tests: jerarquía, cálculo de envido, progresión de truco, puntuación.
+- `lib/games/truco/`: mazo español de 40 cartas con jerarquía real por
+  escalones (los cuatro "4" empatan entre sí y dan "parda"; las piezas —
+  1 y 7 de espada/basto/oro— rompen el orden natural), cálculo de envido
+  (pareja de palo +20, o la mejor carta sola si no hay pareja), 1v1 y 2v2
+  (asientos pares = equipo 0, impares = equipo 1).
+- Envido con escalada completa (envido → envido → real envido → falta
+  envido, o cualquier salto directo válido) y quiero/no quiero/subir en
+  respuesta; falta envido paga exactamente lo que falta para llegar al
+  puntaje objetivo (15 o 30, configurable al crear la sala).
+- Truco con escalada truco → retruco → vale cuatro; solo el equipo que no
+  cantó último puede subir; rechazar termina la mano y paga el escalón
+  anterior. "Irse al mazo" cede la mano en cualquier momento.
+- Desempate real de bazas: 2 en fila gana, parda+decisiva gana la
+  decisiva, decisiva+parda gana la primera, split decide la tercera (si
+  esa también es parda, gana el equipo mano); quien gana una baza abre la
+  siguiente.
+- Flor opcional (por sala): otorga 3 puntos a quien tenga el mejor
+  envido-de-flor entre los que la declararon: sin contraflor (simplificación
+  documentada en el código).
+- Bots con heurísticas de fuerza de mano (suma de poder de las dos mejores
+  cartas) para aceptar/rechazar/subir envido y truco, y para elegir qué
+  carta jugar (tirar baja si abre, subir lo justo si va perdiendo).
+- Mesa visual propia: cartas con palos españoles dibujados a mano (íconos
+  SVG propios, no un mazo genérico), marcador "Nosotros/Ellos", banner de
+  canto pendiente con Quiero/No quiero/Subir, botón de Irse al mazo.
+- 38 tests: jerarquía por escalones, cálculo de envido, las 5 reglas de
+  desempate de bazas, escalada y puntaje de envido/truco, falta envido,
+  irse al mazo, flor, y fin de partida.
 
 ## Fase 4 — Ludo
 

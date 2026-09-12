@@ -59,7 +59,15 @@ export async function createMatch(roomId: string): Promise<EngineResult<{ matchI
   }));
 
   const seed = crypto.randomUUID();
-  const initialState = game.createInitialState({ players, settings: room.settings, seed });
+  let initialState: unknown;
+  try {
+    // createInitialState puede rechazar la cantidad de jugadores (ej. Truco
+    // exige 2 o 4, no 3) — es una validación legítima del juego, no un bug,
+    // así que se captura acá en vez de dejar que reviente como un 500.
+    initialState = game.createInitialState({ players, settings: room.settings, seed });
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : "No se pudo iniciar la partida" };
+  }
 
   const { data: match, error: matchError } = await supabase
     .from("game_matches")

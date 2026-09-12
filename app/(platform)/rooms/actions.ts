@@ -16,6 +16,8 @@ const createRoomSchema = z.object({
   visibility: z.enum(["public", "private"]),
   maxPlayers: z.coerce.number().int().min(1).max(8),
   allowBots: z.coerce.boolean(),
+  targetScore: z.coerce.number().int().optional(),
+  florEnabled: z.coerce.boolean().optional(),
 });
 
 export async function createRoom(_prev: RoomActionState, formData: FormData): Promise<RoomActionState> {
@@ -24,6 +26,8 @@ export async function createRoom(_prev: RoomActionState, formData: FormData): Pr
     visibility: formData.get("visibility") ?? "public",
     maxPlayers: formData.get("maxPlayers"),
     allowBots: formData.get("allowBots") === "on",
+    targetScore: formData.get("targetScore") ?? undefined,
+    florEnabled: formData.get("florEnabled") === "on",
   });
 
   if (!parsed.success) return { error: "Datos de sala inválidos" };
@@ -41,6 +45,14 @@ export async function createRoom(_prev: RoomActionState, formData: FormData): Pr
 
   const maxPlayers = Math.min(Math.max(parsed.data.maxPlayers, game.min_players), game.max_players);
 
+  // Configuración específica de Truco Argentino — GameSetupContext.settings
+  // las lee en lib/games/truco/rules.ts (createInitialState). Otros juegos
+  // simplemente no las usan, así que es seguro mandarlas siempre.
+  const settings =
+    parsed.data.gameSlug === "truco"
+      ? { targetScore: parsed.data.targetScore === 15 ? 15 : 30, florEnabled: parsed.data.florEnabled ?? false }
+      : {};
+
   const { data: room, error: roomError } = await supabase
     .from("game_rooms")
     .insert({
@@ -49,6 +61,7 @@ export async function createRoom(_prev: RoomActionState, formData: FormData): Pr
       visibility: parsed.data.visibility,
       max_players: maxPlayers,
       allow_bots: parsed.data.allowBots,
+      settings,
     })
     .select("id")
     .single();

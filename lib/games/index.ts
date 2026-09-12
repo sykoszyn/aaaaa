@@ -1,4 +1,5 @@
 import { registerGame } from "./core/registry";
+import { trucoGame } from "./truco";
 import { unoGame } from "./uno";
 
 /**
@@ -15,6 +16,7 @@ import { unoGame } from "./uno";
  * GameDefinition, then add one registerGame(...) line below.
  */
 registerGame(unoGame);
+registerGame(trucoGame);
 
 export * from "./core/registry";
 export * from "./core/types";

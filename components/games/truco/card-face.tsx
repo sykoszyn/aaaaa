@@ -1,6 +1,19 @@
 import { cn } from "@/utils/cn";
-import type { TrucoCard } from "@/lib/games/truco";
+import type { TrucoCard, TrucoSuit } from "@/lib/games/truco";
 import { SUIT_COLOR, SuitIcon } from "@/components/games/truco/suit-icon";
+
+/** Misma paleta de "tinta" que suit-icon.tsx — las figuras de las
+ * cartas de figura usan estos mismos tonos por palo para el manto. */
+const INK = "#241407";
+const ROBE_FILL: Record<TrucoSuit, string> = {
+  oro: "#dba616",
+  copa: "#b23a3a",
+  espada: "#7c8791",
+  basto: "#8a5a2e",
+};
+const SKIN = "#e3b488";
+const GOLD = "#e0b23a";
+const HORSE_BROWN = "#7a4a26";
 
 const VALUE_LABEL: Record<TrucoCard["value"], string> = {
   "1": "1", "2": "2", "3": "3", "4": "4", "5": "5", "6": "6", "7": "7",
@@ -41,48 +54,68 @@ const PIP_POSITIONS: Record<string, { x: number; y: number; rotate?: number }[]>
 };
 
 /**
- * Figuras propias para sota/caballo/rey — siluetas simples y sólidas
- * pensadas para ocupar el medallón central de la carta: rey coronado,
- * cabeza de caballo de perfil, paje de pie. A propósito sin detalle fino
- * (nada de líneas delgadas ni huecos chicos) porque el medallón, aunque es
- * la parte más grande de la carta, sigue siendo chico en pantalla — un
- * trazo fino ahí se pierde igual que en el índice de esquina. Dibujadas
- * desde cero, sin calcar la ilustración de ningún mazo comercial.
+ * Figuras propias para sota/caballo/rey, con el mismo tratamiento que los
+ * palos: contorno de tinta + relleno por capas (piel, oro, manto del color
+ * del palo) en vez de una silueta de un solo color — así se leen como un
+ * naipe grabado y no como un ícono de interfaz. Formas simples y sólidas
+ * a propósito (nada de líneas finas que se pierdan chicas). Dibujadas
+ * desde cero: rey coronado, cabeza de caballo de perfil, paje de pie — no
+ * calcan la ilustración de ningún mazo comercial puntual.
  */
-function FaceIllustration({ value, className }: { value: "10" | "11" | "12"; className?: string }) {
+function FaceIllustration({ value, suit, className }: { value: "10" | "11" | "12"; suit: TrucoSuit; className?: string }) {
+  const robe = ROBE_FILL[suit];
+  const sw = 1.1;
+
   if (value === "12") {
-    // Rey: corona de 3 puntas + cabeza + manto, todo en bloques sólidos.
+    // Rey: corona dorada + cabeza + manto del color del palo.
     return (
-      <svg viewBox="0 0 24 30" className={className} fill="currentColor">
-        <circle cx="12" cy="9" r="3.6" />
-        <rect x="7" y="4.6" width="10" height="2.4" rx="0.4" />
-        <polygon points="7.4,4.6 9.6,4.6 8.5,1" />
-        <polygon points="10.8,4.6 13.2,4.6 12,0" />
-        <polygon points="14.4,4.6 16.6,4.6 15.5,1" />
-        <path d="M7.5 13 L16.5 13 L19.5 29 L4.5 29 Z" />
+      <svg viewBox="0 0 24 30" className={className}>
+        <path d="M7.5 13 L16.5 13 L19.5 29 L4.5 29 Z" fill={robe} stroke={INK} strokeWidth={sw} strokeLinejoin="round" />
+        <rect x="6.5" y="19" width="11" height="1.8" fill={INK} fillOpacity="0.25" />
+        <circle cx="12" cy="9" r="3.8" fill={SKIN} stroke={INK} strokeWidth={sw} />
+        <circle cx="10.6" cy="8.8" r="0.5" fill={INK} />
+        <circle cx="13.4" cy="8.8" r="0.5" fill={INK} />
+        <path
+          d="M6.6 4.6 L7.6 1 L9.2 3.6 L10.6 0.4 L12 3 L13.4 0.4 L14.8 3.6 L16.4 1 L17.4 4.6 Z"
+          fill={GOLD}
+          stroke={INK}
+          strokeWidth={sw}
+          strokeLinejoin="round"
+        />
+        <rect x="6.6" y="4.4" width="10.8" height="1.6" fill={GOLD} stroke={INK} strokeWidth={sw * 0.7} />
       </svg>
     );
   }
 
   if (value === "11") {
-    // Caballo: cabeza de caballo de perfil, mirando a la derecha —
-    // silueta simple de líneas rectas, en el espíritu de una pieza de
-    // ajedrez (forma genérica de dominio público, no un mazo puntual).
+    // Caballo: cabeza de caballo de perfil, mirando a la derecha — forma
+    // genérica en el espíritu de una pieza de ajedrez (dominio público).
     return (
-      <svg viewBox="0 0 24 24" className={className} fill="currentColor">
-        <path d="M9 22 9 10 8 9 11 6 10 2 12 3 13 5 17 6 19 8 18 9.5 15 10 14 13 13 22Z" />
+      <svg viewBox="0 0 24 24" className={className}>
+        <path
+          d="M9 22 9 10 8 9 11 6 10 2 12 3 13 5 17 6 19 8 18 9.5 15 10 14 13 13 22Z"
+          fill={HORSE_BROWN}
+          stroke={INK}
+          strokeWidth={sw}
+          strokeLinejoin="round"
+        />
+        <path d="M9 11 6.8 11.7 9 12.6Z" fill={INK} fillOpacity="0.5" />
+        <path d="M9 14.2 6.8 14.9 9 15.8Z" fill={INK} fillOpacity="0.5" />
+        <circle cx="17.2" cy="7.8" r="0.7" fill={INK} />
       </svg>
     );
   }
 
-  // Sota: figura de pie, simple y sólida — sin objetos chicos (lanza,
-  // bandera) que a este tamaño terminan pareciendo otra cosa.
+  // Sota: figura de pie, con túnica del color del palo.
   return (
-    <svg viewBox="0 0 24 26" className={className} fill="currentColor">
-      <circle cx="12" cy="5" r="3.6" />
-      <path d="M7.5 9 L16.5 9 L18 21 L6 21 Z" />
-      <rect x="7.6" y="21" width="3" height="5" rx="1.2" />
-      <rect x="13.4" y="21" width="3" height="5" rx="1.2" />
+    <svg viewBox="0 0 24 26" className={className}>
+      <path d="M7.5 9 L16.5 9 L18 21 L6 21 Z" fill={robe} stroke={INK} strokeWidth={sw} strokeLinejoin="round" />
+      <rect x="6.6" y="14" width="10.8" height="1.6" fill={INK} fillOpacity="0.25" />
+      <rect x="7.6" y="21" width="3" height="5" rx="1.2" fill={HORSE_BROWN} stroke={INK} strokeWidth={sw} />
+      <rect x="13.4" y="21" width="3" height="5" rx="1.2" fill={HORSE_BROWN} stroke={INK} strokeWidth={sw} />
+      <circle cx="12" cy="5" r="3.8" fill={SKIN} stroke={INK} strokeWidth={sw} />
+      <circle cx="10.6" cy="4.8" r="0.5" fill={INK} />
+      <circle cx="13.4" cy="4.8" r="0.5" fill={INK} />
     </svg>
   );
 }
@@ -175,24 +208,25 @@ export function CardFace({ card, faceDown, size = "md", highlight, disabled, onC
       onClick={onClick}
       className={cn(
         SIZES[size],
-        "relative overflow-hidden rounded-xl border-2 bg-[#f7ecd4] font-display shadow-card transition-transform duration-150",
+        "relative overflow-hidden rounded-md border-[3px] border-[#1a0f05] bg-[#efdfba] font-display shadow-card transition-transform duration-150",
         SUIT_COLOR[card.suit],
-        highlight ? "-translate-y-2 border-gold ring-2 ring-gold" : "border-black/20",
+        highlight && "-translate-y-2 ring-2 ring-gold",
         onClick && !disabled && "hover:-translate-y-1 cursor-pointer",
         disabled && "opacity-40",
         className,
       )}
     >
-      {/* Marco interior fino, como el filete impreso de un naipe real. */}
-      <div className="pointer-events-none absolute inset-[6%] rounded-[0.4rem] border" style={{ borderColor: "currentColor", opacity: 0.35 }} />
+      {/* Doble filete, como el borde impreso de un naipe real. */}
+      <div className="pointer-events-none absolute inset-[5%] border-2" style={{ borderColor: "#1a0f05", opacity: 0.75 }} />
+      <div className="pointer-events-none absolute inset-[7%] border" style={{ borderColor: "currentColor", opacity: 0.5 }} />
 
-      <CornerIndex card={card} className="left-[8%] top-[6%]" />
-      <CornerIndex card={card} className="bottom-[6%] right-[8%] rotate-180" />
+      <CornerIndex card={card} className="left-[9%] top-[6%]" />
+      <CornerIndex card={card} className="bottom-[6%] right-[9%] rotate-180" />
 
       {isFace ? (
-        <div className="absolute inset-0 flex flex-col items-center justify-center gap-1 px-[12%]">
-          <div className="relative flex aspect-[10/14] w-[74%] items-center justify-center rounded-t-full rounded-b-md border-2" style={{ borderColor: "currentColor", opacity: 0.9 }}>
-            <FaceIllustration value={card.value as "10" | "11" | "12"} className="h-[88%] w-[88%]" />
+        <div className="absolute inset-0 flex flex-col items-center justify-center gap-1 px-[14%]">
+          <div className="relative flex aspect-[10/14] w-[72%] items-center justify-center rounded-t-full rounded-b-sm border-2" style={{ borderColor: "#1a0f05" }}>
+            <FaceIllustration value={card.value as "10" | "11" | "12"} suit={card.suit} className="h-[92%] w-[92%]" />
           </div>
           <span className="text-[0.65em] font-black leading-none opacity-80">{FACE_LETTER[card.value]}</span>
         </div>

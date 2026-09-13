@@ -35,6 +35,19 @@ export async function createRoom(_prev: RoomActionState, formData: FormData): Pr
   const profile = await requireProfile();
   const supabase = await createClient();
 
+  // TODO(diagnóstico): getUser() es Next.js hablando con GoTrue (Auth) — no
+  // prueba qué ve Postgres. debug_whoami() es una función RPC (ver mensaje
+  // al usuario) que sí corre a través de PostgREST con el mismo JWT que
+  // usa el insert de abajo, así que su resultado es la prueba real de qué
+  // vale auth.uid() en el momento exacto del insert.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- RPC diagnóstico temporal, no está en el tipo Database
+  const { data: whoami, error: whoamiError } = await (supabase.rpc as any)("debug_whoami");
+  if (whoamiError || whoami !== profile.id) {
+    return {
+      error: `Diagnóstico: auth.uid() en Postgres=${whoami ?? whoamiError?.message ?? "null"} vs profile.id=${profile.id}`,
+    };
+  }
+
   const { data: game, error: gameError } = await supabase
     .from("games")
     .select("id, min_players, max_players")

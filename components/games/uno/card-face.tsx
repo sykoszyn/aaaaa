@@ -1,6 +1,47 @@
+"use client";
+
 import { Ban, Repeat } from "lucide-react";
+import { useState } from "react";
 import { cn } from "@/utils/cn";
 import type { UnoCard, UnoColor } from "@/lib/games/uno";
+
+/**
+ * Si existe un archivo en public/cards/<slug>.png (o .svg/.jpg), se usa esa
+ * imagen en vez del diseño dibujado más abajo — poné ahí las que quieras
+ * usar, con este nombre de archivo:
+ *   - numéricas/especiales: "<color>-<valor>.png" → ej. "red-5.png",
+ *     "blue-skip.png", "green-reverse.png", "yellow-draw2.png"
+ *   - wild: "wild.png"
+ *   - wild+4: "wild4.png"
+ * No hace falta subir las 108 (los duplicados del mismo color+valor se ven
+ * igual) — con una por combinación alcanza. Las que no subas se ven con el
+ * diseño propio de acá abajo, no rompen nada.
+ */
+const CARD_IMAGE_EXTENSIONS = ["png", "svg", "jpg", "webp"];
+
+function cardImageSlug(card: UnoCard): string {
+  return card.color === "wild" ? card.value : `${card.color}-${card.value}`;
+}
+
+function CardImageOverlay({ card }: { card: UnoCard }) {
+  const [extIndex, setExtIndex] = useState(0);
+  const [failed, setFailed] = useState(false);
+
+  if (failed) return null;
+
+  return (
+    // eslint-disable-next-line @next/next/no-img-element -- fuente dinámica/opcional del usuario, next/image exige dimensiones fijas por archivo
+    <img
+      src={`/cards/${cardImageSlug(card)}.${CARD_IMAGE_EXTENSIONS[extIndex]}`}
+      alt=""
+      className="absolute inset-0 h-full w-full rounded-[inherit] object-cover"
+      onError={() => {
+        if (extIndex < CARD_IMAGE_EXTENSIONS.length - 1) setExtIndex((i) => i + 1);
+        else setFailed(true);
+      }}
+    />
+  );
+}
 
 /** Colores de fondo por palo — tonos saturados clásicos de UNO, dibujados
  * con nuestro propio óvalo/tipografía (no assets ni logo originales). */
@@ -106,6 +147,8 @@ export function CardFace({ card, faceDown, size = "md", selected, disabled, onCl
       )}
       style={{ backgroundColor: isWild ? "#0c0c14" : BG_COLOR[card.color as UnoColor] }}
     >
+      <CardImageOverlay card={card} />
+
       {!isWild && (
         <>
           <CornerMark card={card} className="left-[10%] top-[8%]" />

@@ -15,6 +15,7 @@ type MatchRow = Database["public"]["Tables"]["game_matches"]["Row"] & {
   games: { slug: GameSlug };
   game_match_players: MatchPlayerRow[];
 };
+type MatchRowWithLastSeq = MatchRow & { game_events: { seq: number }[] };
 
 /**
  * Every function here runs ONLY on the server (route handlers / server
@@ -131,19 +132,31 @@ export async function getStateForSeat(matchId: string, seat: number | null): Pro
  * el evento y el nuevo estado, cierra la partida si terminó, y — si el
  * turno siguiente es de un bot — resuelve automáticamente sus movimientos
  * en cadena hasta que vuelva a ser el turno de un humano o termine el juego.
+ *
+ * Recibe `profileId` (no un seat ya resuelto) para no depender de que quien
+ * llama haya hecho su propia consulta aparte solo para ubicar el asiento —
+ * antes el route handler hacía un SELECT propio antes de llamar acá, y esta
+ * función volvía a traer la partida completa igual. Ahora hay un solo
+ * SELECT: este resuelve el asiento con los mismos datos que ya trajo.
  */
 export async function applyPlayerMove(
   matchId: string,
-  requestingSeat: number,
-  move: GameMove,
+  profileId: string,
+  moveInput: { type: string; payload: unknown },
 ): Promise<EngineResult<{ finished: boolean; view: unknown }>> {
   const supabase = createAdminClient();
 
+  // Trae en un solo viaje de red la partida, sus jugadores Y el seq del
+  // último evento (embebiendo game_events ordenado desc, limit 1) — cada
+  // round trip a Supabase pesa bastante más que el cómputo en sí, así que
+  // cuantos menos, menos lag se siente al jugar.
   const { data: match, error } = await supabase
     .from("game_matches")
-    .select("*, games(slug), game_match_players(*)")
+    .select("*, games(slug), game_match_players(*), game_events(seq)")
     .eq("id", matchId)
-    .single();
+    .order("seq", { foreignTable: "game_events", ascending: false })
+    .limit(1, { foreignTable: "game_events" })
+    .single<MatchRowWithLastSeq>();
 
   if (error || !match) return { ok: false, error: "Partida no encontrada" };
   if (match.status !== "in_progress") return { ok: false, error: "La partida ya terminó" };
@@ -151,22 +164,31 @@ export async function applyPlayerMove(
   const game = getGameDefinition(match.games.slug as GameSlug);
   if (!game) return { ok: false, error: "Juego no implementado" };
 
-  if (game.getActiveSeat(match.state) !== requestingSeat) {
+  const seatRow = match.game_match_players.find((p) => p.profile_id === profileId);
+  if (!seatRow) return { ok: false, error: "No participás de esta partida" };
+
+  if (game.getActiveSeat(match.state) !== seatRow.seat) {
     return { ok: false, error: "No es tu turno" };
   }
-  if (move.seat !== requestingSeat) {
-    return { ok: false, error: "El movimiento no coincide con tu asiento" };
-  }
 
-  return runMoveLoop(supabase, matchId, match, game, move, requestingSeat);
+  const move: GameMove = { seat: seatRow.seat, type: moveInput.type, payload: moveInput.payload };
+  const lastSeq = match.game_events[0]?.seq ?? -1;
+  return runMoveLoop(supabase, matchId, match, game, move, seatRow.seat, lastSeq);
 }
 
 /**
  * Corre el movimiento del humano y, en cadena, los de cualquier bot cuyo
- * turno siga inmediatamente, persistiendo cada paso como su propio evento.
- * Devuelve directamente la vista del asiento que pidió el movimiento —así el
- * cliente actualiza su pantalla con la respuesta del POST, sin esperar el
- * viaje de ida y vuelta extra de un refetch por Realtime.
+ * turno siga inmediatamente. Devuelve directamente la vista del asiento que
+ * pidió el movimiento —así el cliente actualiza su pantalla con la
+ * respuesta del POST, sin esperar el viaje de ida y vuelta extra de un
+ * refetch por Realtime.
+ *
+ * Los eventos de cada paso (el del humano + los de la cadena de bots) se
+ * acumulan en memoria y se insertan en UN solo viaje de red al final, en vez
+ * de uno por movimiento — con varios bots seguidos (común si el jugador usa
+ * un +2/salteo y le sigue una fila de bots) eso significaba varios round
+ * trips extra a Supabase por cada movimiento del jugador, y esa espera en
+ * cadena era la causa principal del lag al jugar.
  */
 async function runMoveLoop(
   supabase: AdminClient,
@@ -175,18 +197,13 @@ async function runMoveLoop(
   game: GameDefinition,
   firstMove: GameMove,
   viewerSeat: number,
+  lastSeq: number,
 ): Promise<EngineResult<{ finished: boolean; view: unknown }>> {
   // `state` is genuinely `unknown` here — GameDefinition's TState is opaque to
   // the generic engine, it only ever gets round-tripped through jsonb.
   let state: unknown = match.state;
-  const lastEvent = await supabase
-    .from("game_events")
-    .select("seq")
-    .eq("match_id", matchId)
-    .order("seq", { ascending: false })
-    .limit(1)
-    .maybeSingle();
-  let seq = lastEvent.data?.seq ?? -1;
+  let seq = lastSeq;
+  const events: Database["public"]["Tables"]["game_events"]["Insert"][] = [];
 
   let pendingMove: GameMove | null = firstMove;
 
@@ -198,7 +215,7 @@ async function runMoveLoop(
     seq += 1;
 
     const actingPlayer = match.game_match_players.find((p) => p.seat === pendingMove!.seat);
-    await supabase.from("game_events").insert({
+    events.push({
       match_id: matchId,
       profile_id: actingPlayer?.profile_id ?? null,
       seq,
@@ -207,7 +224,7 @@ async function runMoveLoop(
     });
 
     if (game.isFinished(state)) {
-      await finishMatch(supabase, matchId, match, game, state);
+      await Promise.all([supabase.from("game_events").insert(events), finishMatch(supabase, matchId, match, game, state)]);
       return { ok: true, data: { finished: true, view: game.toPlayerView(state, viewerSeat) } };
     }
 
@@ -220,7 +237,10 @@ async function runMoveLoop(
         : null;
   }
 
-  await supabase.from("game_matches").update({ state: state as Record<string, unknown> }).eq("id", matchId);
+  await Promise.all([
+    supabase.from("game_events").insert(events),
+    supabase.from("game_matches").update({ state: state as Record<string, unknown> }).eq("id", matchId),
+  ]);
   return { ok: true, data: { finished: false, view: game.toPlayerView(state, viewerSeat) } };
 }
 

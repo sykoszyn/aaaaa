@@ -41,7 +41,7 @@ export async function createRoom(_prev: RoomActionState, formData: FormData): Pr
     .eq("slug", parsed.data.gameSlug)
     .single();
 
-  if (gameError || !game) return { error: "Juego no encontrado" };
+  if (gameError || !game) return { error: `Juego no encontrado${gameError ? `: ${gameError.message}` : ""}` };
 
   const maxPlayers = Math.min(Math.max(parsed.data.maxPlayers, game.min_players), game.max_players);
 
@@ -66,13 +66,16 @@ export async function createRoom(_prev: RoomActionState, formData: FormData): Pr
     .select("id")
     .single();
 
-  if (roomError || !room) return { error: "No se pudo crear la sala" };
+  // TODO(diagnóstico): una vez confirmado el problema real en producción,
+  // volver a los mensajes genéricos — no conviene exponer errores crudos
+  // de Postgres de forma permanente.
+  if (roomError || !room) return { error: `No se pudo crear la sala: ${roomError?.message ?? "sin fila devuelta"}` };
 
   const { error: joinError } = await supabase
     .from("game_room_players")
     .insert({ room_id: room.id, profile_id: profile.id, seat: 0, is_ready: true });
 
-  if (joinError) return { error: "No se pudo unirte a tu propia sala" };
+  if (joinError) return { error: `No se pudo unirte a tu propia sala: ${joinError.message}` };
 
   redirect(`/rooms/${room.id}`);
 }

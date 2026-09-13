@@ -16,6 +16,15 @@ type MatchRow = Database["public"]["Tables"]["game_matches"]["Row"] & {
   game_match_players: MatchPlayerRow[];
 };
 
+/** Lo mínimo que runMoveLoop/finishMatch necesitan del match — así
+ * createMatch puede llamar al mismo loop sin tener que armar un MatchRow
+ * completo (con id/created_at/etc. de una fila que en ese momento recién
+ * se insertó). */
+type LoopMatchContext = {
+  room_id: string;
+  game_match_players: Pick<MatchPlayerRow, "seat" | "profile_id" | "is_bot" | "bot_difficulty">[];
+};
+
 /**
  * Every function here runs ONLY on the server (route handlers / server
  * actions) using the service-role client, because game_matches /
@@ -105,6 +114,24 @@ export async function createMatch(roomId: string): Promise<EngineResult<{ matchI
 
   await supabase.from("game_rooms").update({ status: "in_progress" }).eq("id", roomId);
 
+  // Quién arranca jugando la primera mano lo decide cada juego (en Truco,
+  // por ejemplo, depende de la rotación del dealer, no de quién creó la
+  // sala) — puede perfectamente ser un bot. Sin esto, si el asiento activo
+  // inicial era de un bot, nadie se lo pedía nunca porque los bots solo
+  // juegan en cadena como reacción al POST de un humano, y la partida
+  // quedaba trabada desde el minuto cero.
+  const loopMatch: LoopMatchContext = {
+    room_id: roomId,
+    game_match_players: players.map((p) => ({
+      seat: p.seat,
+      profile_id: p.profileId,
+      is_bot: p.isBot,
+      bot_difficulty: p.botDifficulty ?? null,
+    })),
+  };
+  const openingResult = await runMoveLoop(supabase, match.id, loopMatch, game, initialState, null, 0, 0);
+  if (!openingResult.ok) return { ok: false, error: openingResult.error };
+
   return { ok: true, data: { matchId: match.id } };
 }
 
@@ -182,17 +209,26 @@ export async function applyPlayerMove(
     .maybeSingle();
   const lastSeq = lastEvent.data?.seq ?? -1;
 
-  return runMoveLoop(supabase, matchId, match, game, move, seatRow.seat, lastSeq);
+  return runMoveLoop(supabase, matchId, match, game, match.state, move, seatRow.seat, lastSeq);
 }
 
 /**
- * Corre el movimiento del humano y, en cadena, los de cualquier bot cuyo
- * turno siga inmediatamente. Devuelve la vista del asiento que pidió el
- * movimiento DESPUÉS DE CADA PASO de la cadena (`steps`), no solo la final:
- * si el motor resolvía en el mismo pedido tu jugada y la de varios bots
- * seguidos, la única vista que llegaba a mostrarse era la del último bot —
- * tu propia carta quedaba tapada sin que la pantalla la mostrara ni una
- * vez. El cliente anima estos pasos en secuencia (lib/games/client.ts).
+ * Corre un movimiento humano (si hay uno: `firstMove`) y, en cadena, los de
+ * cualquier bot cuyo turno siga inmediatamente — incluido el caso de
+ * `firstMove: null`, que resuelve la cadena de bots empezando directamente
+ * desde el asiento activo actual. Ese caso lo usa `createMatch`: la
+ * primera mano de una partida nueva no necesariamente empieza en el
+ * asiento humano (en Truco, por ejemplo, la mano #1 siempre arranca en el
+ * asiento siguiente al dealer, que puede perfectamente ser un bot) — sin
+ * este paso, si el que debía jugar primero era un bot, nadie se lo pedía
+ * nunca y la partida quedaba trabada desde el minuto cero.
+ *
+ * Devuelve la vista del asiento que pidió el movimiento DESPUÉS DE CADA
+ * PASO de la cadena (`steps`), no solo la final: si el motor resolvía en
+ * el mismo pedido tu jugada y la de varios bots seguidos, la única vista
+ * que llegaba a mostrarse era la del último bot — tu propia carta quedaba
+ * tapada sin que la pantalla la mostrara ni una vez. El cliente anima
+ * estos pasos en secuencia (lib/games/client.ts).
  *
  * Los eventos de cada paso se acumulan en memoria y se insertan en UN solo
  * viaje de red al final, en vez de uno por movimiento — con varios bots
@@ -202,20 +238,27 @@ export async function applyPlayerMove(
 async function runMoveLoop(
   supabase: AdminClient,
   matchId: string,
-  match: MatchRow,
+  match: LoopMatchContext,
   game: GameDefinition,
-  firstMove: GameMove,
+  initialState: unknown,
+  firstMove: GameMove | null,
   viewerSeat: number,
   lastSeq: number,
 ): Promise<EngineResult<{ finished: boolean; steps: unknown[] }>> {
   // `state` is genuinely `unknown` here — GameDefinition's TState is opaque to
   // the generic engine, it only ever gets round-tripped through jsonb.
-  let state: unknown = match.state;
+  let state: unknown = initialState;
   let seq = lastSeq;
   const events: Database["public"]["Tables"]["game_events"]["Insert"][] = [];
   const steps: unknown[] = [];
 
-  let pendingMove: GameMove | null = firstMove;
+  const nextBotMove = (): GameMove | null => {
+    const seat = game.getActiveSeat(state);
+    const player = match.game_match_players.find((p) => p.seat === seat);
+    return player?.is_bot && seat !== null ? game.getBotMove(state, seat, player.bot_difficulty ?? "normal") : null;
+  };
+
+  let pendingMove: GameMove | null = firstMove ?? nextBotMove();
 
   while (pendingMove) {
     const validation = game.validateMove(state, pendingMove);
@@ -239,26 +282,24 @@ async function runMoveLoop(
       return { ok: true, data: { finished: true, steps } };
     }
 
-    const nextSeat = game.getActiveSeat(state);
-    const nextPlayer = match.game_match_players.find((p) => p.seat === nextSeat);
-
-    pendingMove =
-      nextPlayer?.is_bot && nextSeat !== null
-        ? game.getBotMove(state, nextSeat, nextPlayer.bot_difficulty ?? "normal")
-        : null;
+    pendingMove = nextBotMove();
   }
 
-  await Promise.all([
-    supabase.from("game_events").insert(events),
-    supabase.from("game_matches").update({ state: state as Record<string, unknown> }).eq("id", matchId),
-  ]);
+  // Con firstMove: null, si el asiento activo ya era humano no hay nada
+  // que resolver (events queda vacío) — no tiene sentido escribir nada.
+  if (events.length > 0) {
+    await Promise.all([
+      supabase.from("game_events").insert(events),
+      supabase.from("game_matches").update({ state: state as Record<string, unknown> }).eq("id", matchId),
+    ]);
+  }
   return { ok: true, data: { finished: false, steps } };
 }
 
 async function finishMatch(
   supabase: AdminClient,
   matchId: string,
-  match: MatchRow,
+  match: LoopMatchContext,
   game: GameDefinition,
   finalState: unknown,
 ) {

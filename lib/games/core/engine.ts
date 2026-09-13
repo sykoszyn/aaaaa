@@ -165,11 +165,20 @@ export async function getStateForSeat(matchId: string, seat: number | null): Pro
  * función volvía a traer la partida completa igual. Ahora hay un solo
  * SELECT de la partida: este resuelve el asiento con esos mismos datos.
  */
+/** Un paso de la cadena resuelta por runMoveLoop: la vista resultante para
+ * el asiento que mira, MÁS el movimiento que la produjo — así el cliente
+ * puede anunciar qué pasó (quién cantó qué) en vez de solo pintar el
+ * resultado final. */
+export interface MoveStep {
+  view: unknown;
+  move: GameMove;
+}
+
 export async function applyPlayerMove(
   matchId: string,
   profileId: string,
   moveInput: { type: string; payload: unknown },
-): Promise<EngineResult<{ finished: boolean; steps: unknown[] }>> {
+): Promise<EngineResult<{ finished: boolean; steps: MoveStep[] }>> {
   const supabase = createAdminClient();
 
   const { data: match, error } = await supabase
@@ -244,13 +253,13 @@ async function runMoveLoop(
   firstMove: GameMove | null,
   viewerSeat: number,
   lastSeq: number,
-): Promise<EngineResult<{ finished: boolean; steps: unknown[] }>> {
+): Promise<EngineResult<{ finished: boolean; steps: MoveStep[] }>> {
   // `state` is genuinely `unknown` here — GameDefinition's TState is opaque to
   // the generic engine, it only ever gets round-tripped through jsonb.
   let state: unknown = initialState;
   let seq = lastSeq;
   const events: Database["public"]["Tables"]["game_events"]["Insert"][] = [];
-  const steps: unknown[] = [];
+  const steps: MoveStep[] = [];
 
   const nextBotMove = (): GameMove | null => {
     const seat = game.getActiveSeat(state);
@@ -266,7 +275,7 @@ async function runMoveLoop(
 
     state = game.applyMove(state, pendingMove);
     seq += 1;
-    steps.push(game.toPlayerView(state, viewerSeat));
+    steps.push({ view: game.toPlayerView(state, viewerSeat), move: pendingMove });
 
     const actingPlayer = match.game_match_players.find((p) => p.seat === pendingMove!.seat);
     events.push({

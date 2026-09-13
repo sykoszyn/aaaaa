@@ -8,10 +8,12 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/toast";
 import { useMatchState } from "@/hooks/use-match-state";
+import { useVoiceAnnouncer } from "@/hooks/use-voice-announcer";
 import { playSteps, postMove } from "@/lib/games/client";
+import { describeTrucoStep } from "@/lib/games/truco/announcer";
 import { allowedEnvidoRaises, allowedTrucoRaise, hasFlor } from "@/lib/games/truco/rules";
 import { cn } from "@/utils/cn";
-import type { EnvidoLevel, TrucoBetLevel, TrucoPlayerView } from "@/lib/games/truco";
+import type { EnvidoLevel, TrucoBetLevel, TrucoMovePayload, TrucoPlayerView } from "@/lib/games/truco";
 
 interface SeatInfo {
   seat: number;
@@ -34,6 +36,7 @@ const TRUCO_LABEL: Record<TrucoBetLevel, string> = { truco: "Truco", retruco: "R
 export function TrucoTable({ matchId, roomId, seat, initialView, players }: TrucoTableProps) {
   const { state: view, applyLocalState } = useMatchState<TrucoPlayerView>({ matchId, initialState: initialView });
   const { push } = useToast();
+  const { say } = useVoiceAnnouncer();
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const lastSummaryHand = useRef<number | null>(null);
@@ -58,8 +61,23 @@ export function TrucoTable({ matchId, roomId, seat, initialView, players }: Truc
   const send = (type: string, payload: unknown) =>
     startTransition(async () => {
       const result = await postMove<TrucoPlayerView>(matchId, type, payload);
-      if (!result.ok) push({ variant: "error", title: "No se pudo cantar", description: result.error });
-      else await playSteps(result.steps, applyLocalState, result.finished);
+      if (!result.ok) {
+        push({ variant: "error", title: "No se pudo cantar", description: result.error });
+        return;
+      }
+
+      // Anuncia por voz cada canto y cada resultado revelado (envido,
+      // flor, quién se lleva la mano) a medida que se van pintando los
+      // pasos — así no hace falta estar mirando el cartelito para
+      // enterarse de que el rival cantó algo o de quién tenía más.
+      let prevView = view;
+      await playSteps(result.steps, applyLocalState, result.finished, {
+        onStep: (step) => {
+          const move = { seat: step.move.seat, type: step.move.type, payload: step.move.payload as TrucoMovePayload };
+          for (const phrase of describeTrucoStep(move, prevView, step.state)) say(phrase);
+          prevView = step.state;
+        },
+      });
     });
 
   if (view.finished) {

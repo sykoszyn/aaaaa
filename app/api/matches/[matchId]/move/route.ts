@@ -42,5 +42,10 @@ export async function POST(request: Request, { params }: { params: Promise<{ mat
 
   if (!result.ok) return NextResponse.json({ error: result.error }, { status: 400 });
 
-  return NextResponse.json(result.data);
+  // Devolvemos la vista ya calculada del propio asiento para que el cliente
+  // pinte de una el resultado del movimiento (y de la cadena de bots que
+  // pueda haber corrido en el medio) sin esperar un refetch aparte por
+  // Realtime — ese viaje de ida y vuelta extra era la principal causa de
+  // lag percibido en el tablero.
+  return NextResponse.json({ finished: result.data.finished, state: result.data.view });
 }

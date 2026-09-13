@@ -10,6 +10,7 @@ import { useToast } from "@/components/ui/toast";
 import { useMatchState } from "@/hooks/use-match-state";
 import { postMove } from "@/lib/games/client";
 import { allowedEnvidoRaises, allowedTrucoRaise, hasFlor } from "@/lib/games/truco/rules";
+import { cn } from "@/utils/cn";
 import type { EnvidoLevel, TrucoBetLevel, TrucoPlayerView } from "@/lib/games/truco";
 
 interface SeatInfo {
@@ -31,7 +32,7 @@ const ENVIDO_LABEL: Record<EnvidoLevel, string> = { envido: "Envido", real_envid
 const TRUCO_LABEL: Record<TrucoBetLevel, string> = { truco: "Truco", retruco: "Retruco", vale_cuatro: "Vale cuatro" };
 
 export function TrucoTable({ matchId, roomId, seat, initialView, players }: TrucoTableProps) {
-  const { state: view, refetch } = useMatchState<TrucoPlayerView>({ matchId, initialState: initialView });
+  const { state: view, applyLocalState } = useMatchState<TrucoPlayerView>({ matchId, initialState: initialView });
   const { push } = useToast();
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -56,9 +57,9 @@ export function TrucoTable({ matchId, roomId, seat, initialView, players }: Truc
 
   const send = (type: string, payload: unknown) =>
     startTransition(async () => {
-      const result = await postMove(matchId, type, payload);
+      const result = await postMove<TrucoPlayerView>(matchId, type, payload);
       if (!result.ok) push({ variant: "error", title: "No se pudo cantar", description: result.error });
-      else void refetch();
+      else applyLocalState(result.state, result.finished);
     });
 
   if (view.finished) {
@@ -90,34 +91,38 @@ export function TrucoTable({ matchId, roomId, seat, initialView, players }: Truc
     view.trickNumber === 0 && !view.flor.declaredSeats.includes(seat) && hasFlor(view.self.hand);
 
   return (
-    <div className="flex flex-col gap-5">
-      <div className="flex flex-wrap items-center justify-between gap-2">
+    <div className="flex flex-col gap-4">
+      <div className="flex flex-wrap items-center justify-between gap-2 rounded-2xl border border-border-strong bg-surface-3/60 px-4 py-3">
         <div className="flex items-center gap-3">
-          <Badge variant="accent">Nosotros {view.matchScore[view.myTeam]}</Badge>
-          <Badge variant="neutral">Ellos {view.matchScore[view.myTeam === 0 ? 1 : 0]}</Badge>
+          <Badge variant="accent" className="text-sm">Nosotros {view.matchScore[view.myTeam]}</Badge>
+          <Badge variant="neutral" className="text-sm">Ellos {view.matchScore[view.myTeam === 0 ? 1 : 0]}</Badge>
         </div>
         <p className="text-xs text-text-faint">a {view.targetScore} puntos · mano #{view.handNumber}</p>
       </div>
 
-      <div className="flex flex-wrap justify-center gap-4">
-        {players
-          .filter((p) => p.seat !== seat)
-          .map((p) => (
-            <div key={p.seat} className="flex flex-col items-center gap-1">
-              <Avatar name={p.name} src={p.avatarUrl} size={36} />
-              <p className="text-xs text-text-faint">{p.name}</p>
-              {view.currentSeat === p.seat && <span className="size-1.5 rounded-full bg-success" />}
+      <div className="rounded-3xl border border-border-strong bg-[radial-gradient(circle_at_50%_0%,var(--color-surface-3),var(--color-ink)_75%)] p-4 sm:p-6">
+        <div className="flex flex-wrap justify-center gap-6 sm:gap-10">
+          {players
+            .filter((p) => p.seat !== seat)
+            .map((p) => (
+              <div key={p.seat} className="relative flex flex-col items-center gap-1.5">
+                <div className="relative">
+                  <Avatar name={p.name} src={p.avatarUrl} size={48} />
+                  {view.currentSeat === p.seat && <span className="absolute -inset-1.5 -z-10 animate-pulse-ring rounded-full" />}
+                </div>
+                <p className="text-sm font-semibold text-text">{p.name}</p>
+              </div>
+            ))}
+        </div>
+
+        <div className="my-5 flex flex-wrap items-center justify-center gap-4 sm:gap-6">
+          {players.map((p) => (
+            <div key={p.seat} className="flex flex-col items-center gap-2">
+              <CardFace card={view.playedThisTrick[p.seat] ?? undefined} size="lg" className={view.playedThisTrick[p.seat] ? "animate-card-in" : "opacity-30"} />
+              <span className="text-xs font-medium text-text-faint">{p.seat === seat ? "Vos" : p.name}</span>
             </div>
           ))}
-      </div>
-
-      <div className="flex flex-wrap items-center justify-center gap-3 rounded-2xl border border-border bg-surface-3/30 py-6">
-        {players.map((p) => (
-          <div key={p.seat} className="flex flex-col items-center gap-1">
-            <CardFace card={view.playedThisTrick[p.seat] ?? undefined} size="md" />
-            <span className="text-[10px] text-text-faint">{p.seat === seat ? "Vos" : p.name}</span>
-          </div>
-        ))}
+        </div>
       </div>
 
       {(iRespondEnvido || iRespondTruco) && (
@@ -180,12 +185,19 @@ export function TrucoTable({ matchId, roomId, seat, initialView, players }: Truc
         </Button>
       </div>
 
-      <div className="flex flex-col items-center gap-2">
-        <div className="flex flex-wrap justify-center gap-2">
+      <div
+        className={cn(
+          "flex flex-col items-center gap-3 rounded-3xl border border-border-strong bg-surface-3/40 p-4 transition-colors duration-300",
+          isMyTurn && !envidoPending && !trucoPending && "border-accent/50",
+        )}
+      >
+        <div className="scrollbar-thin flex w-full justify-center gap-1 overflow-x-auto px-2 py-2 sm:flex-wrap sm:gap-2">
           {view.self.hand.map((card) => (
             <CardFace
               key={card.id}
               card={card}
+              size="md"
+              className="shrink-0 first:ml-0 [&:not(:first-child)]:-ml-6 sm:[&:not(:first-child)]:-ml-3"
               disabled={!isMyTurn || pending || !!envidoPending || !!trucoPending}
               onClick={
                 isMyTurn && !envidoPending && !trucoPending

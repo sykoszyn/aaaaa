@@ -136,7 +136,7 @@ export async function applyPlayerMove(
   matchId: string,
   requestingSeat: number,
   move: GameMove,
-): Promise<EngineResult<{ finished: boolean }>> {
+): Promise<EngineResult<{ finished: boolean; view: unknown }>> {
   const supabase = createAdminClient();
 
   const { data: match, error } = await supabase
@@ -158,12 +158,15 @@ export async function applyPlayerMove(
     return { ok: false, error: "El movimiento no coincide con tu asiento" };
   }
 
-  return runMoveLoop(supabase, matchId, match, game, move);
+  return runMoveLoop(supabase, matchId, match, game, move, requestingSeat);
 }
 
 /**
  * Corre el movimiento del humano y, en cadena, los de cualquier bot cuyo
  * turno siga inmediatamente, persistiendo cada paso como su propio evento.
+ * Devuelve directamente la vista del asiento que pidió el movimiento —así el
+ * cliente actualiza su pantalla con la respuesta del POST, sin esperar el
+ * viaje de ida y vuelta extra de un refetch por Realtime.
  */
 async function runMoveLoop(
   supabase: AdminClient,
@@ -171,7 +174,8 @@ async function runMoveLoop(
   match: MatchRow,
   game: GameDefinition,
   firstMove: GameMove,
-): Promise<EngineResult<{ finished: boolean }>> {
+  viewerSeat: number,
+): Promise<EngineResult<{ finished: boolean; view: unknown }>> {
   // `state` is genuinely `unknown` here — GameDefinition's TState is opaque to
   // the generic engine, it only ever gets round-tripped through jsonb.
   let state: unknown = match.state;
@@ -204,7 +208,7 @@ async function runMoveLoop(
 
     if (game.isFinished(state)) {
       await finishMatch(supabase, matchId, match, game, state);
-      return { ok: true, data: { finished: true } };
+      return { ok: true, data: { finished: true, view: game.toPlayerView(state, viewerSeat) } };
     }
 
     const nextSeat = game.getActiveSeat(state);
@@ -217,7 +221,7 @@ async function runMoveLoop(
   }
 
   await supabase.from("game_matches").update({ state: state as Record<string, unknown> }).eq("id", matchId);
-  return { ok: true, data: { finished: false } };
+  return { ok: true, data: { finished: false, view: game.toPlayerView(state, viewerSeat) } };
 }
 
 async function finishMatch(

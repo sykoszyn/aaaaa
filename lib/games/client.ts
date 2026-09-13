@@ -5,7 +5,11 @@
  * single server-side write path in lib/games/core/engine.ts. A game's UI
  * never talks to Supabase directly for match state, only to this endpoint.
  */
-export async function postMove(matchId: string, type: string, payload: unknown): Promise<{ ok: true } | { ok: false; error: string }> {
+export async function postMove<TState = unknown>(
+  matchId: string,
+  type: string,
+  payload: unknown,
+): Promise<{ ok: true; state: TState; finished: boolean } | { ok: false; error: string }> {
   const res = await fetch(`/api/matches/${matchId}/move`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -14,5 +18,5 @@ export async function postMove(matchId: string, type: string, payload: unknown):
 
   const body = await res.json().catch(() => ({}));
   if (!res.ok) return { ok: false, error: body.error ?? "No se pudo enviar el movimiento" };
-  return { ok: true };
+  return { ok: true, state: body.state, finished: body.finished };
 }

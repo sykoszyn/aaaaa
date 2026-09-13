@@ -111,7 +111,14 @@ interface CardFaceProps {
   className?: string;
 }
 
-const SIZES = { sm: "w-10 h-14 text-sm", md: "w-14 h-20 text-lg", lg: "w-20 h-28 text-2xl" };
+/** Tamaños en escala ~2.5:3.5 (proporción real de carta), crecientes por
+ * breakpoint — la mano y el centro de juego son los que más se agrandan,
+ * que es donde más se notaba que las cartas quedaban chicas para jugar. */
+const SIZES = {
+  sm: "w-12 h-16 text-sm sm:w-14 sm:h-20 sm:text-base",
+  md: "w-20 h-28 text-xl sm:w-24 sm:h-32 sm:text-2xl md:w-28 md:h-40 md:text-3xl",
+  lg: "w-28 h-40 text-2xl sm:w-32 sm:h-44 sm:text-3xl md:w-36 md:h-52 md:text-4xl",
+};
 
 export function CardFace({ card, faceDown, size = "md", selected, disabled, onClick, className }: CardFaceProps) {
   if (faceDown || !card) {
@@ -119,11 +126,18 @@ export function CardFace({ card, faceDown, size = "md", selected, disabled, onCl
       <div
         className={cn(
           SIZES[size],
-          "rounded-lg border-2 border-white/10 bg-gradient-to-br from-surface-3 to-ink shadow-card",
+          "relative overflow-hidden rounded-xl border-2 border-white/10 bg-gradient-to-br from-surface-3 to-ink shadow-card",
           className,
         )}
       >
-        <div className="flex h-full items-center justify-center">
+        <div
+          className="absolute inset-1.5 rounded-lg border-2 border-white/10"
+          style={{
+            backgroundImage:
+              "repeating-linear-gradient(135deg, rgba(139,92,246,0.18) 0 6px, transparent 6px 14px)",
+          }}
+        />
+        <div className="relative flex h-full items-center justify-center">
           <span className="font-display text-[0.6em] font-black italic text-text-faint">JA</span>
         </div>
       </div>

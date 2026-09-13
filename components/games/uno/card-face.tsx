@@ -16,8 +16,12 @@ const BG_COLOR: Record<UnoColor, string> = {
 const WILD_QUADRANTS: UnoColor[] = ["red", "yellow", "green", "blue"];
 
 function CenterMark({ card }: { card: UnoCard }) {
-  if (card.value === "skip") return <Ban className="h-[52%] w-[52%]" strokeWidth={3.5} />;
-  if (card.value === "reverse") return <Repeat className="h-[48%] w-[48%]" strokeWidth={3.5} />;
+  // Ojo: acá tiene que ser em, no % — el div que rota este ícono no tiene
+  // una altura propia explícita, así que un alto/ancho en % nunca se
+  // resuelve contra el tamaño real de la carta y el ícono queda pegado al
+  // tamaño por defecto de lucide (24px) sin importar cuánto crezca la carta.
+  if (card.value === "skip") return <Ban className="h-[1.9em] w-[1.9em]" strokeWidth={3.5} />;
+  if (card.value === "reverse") return <Repeat className="h-[1.75em] w-[1.75em]" strokeWidth={3.5} />;
   if (card.value === "draw2") return <span className="text-[0.95em] font-black leading-none">+2</span>;
   if (card.value === "wild4") return <span className="text-[0.85em] font-black leading-none">+4</span>;
   return <span className="text-[1.5em] font-black italic leading-none">{card.value}</span>;

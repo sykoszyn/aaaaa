@@ -43,6 +43,60 @@ as $$
 $$;
 
 -- ----------------------------------------------------------------------------
+-- Helpers: visibilidad de salas y partidas.
+--
+-- IMPORTANTE — por qué existen como funciones y no como subqueries directas
+-- en las policies: la policy de game_rooms necesita consultar
+-- game_room_players (para saber si sos participante) y la de
+-- game_room_players necesita consultar game_rooms (para saber si la sala es
+-- pública/tuya) — si cada una hiciera esa consulta directamente, evaluar
+-- una dispara la RLS de la otra, que vuelve a disparar la primera, y
+-- Postgres corta con "infinite recursion detected in policy for relation".
+-- Lo mismo pasa con game_match_players si su policy se auto-referencia.
+--
+-- Al ser SECURITY DEFINER, estas funciones corren con los privilegios del
+-- owner (el rol de la migración, dueño de las tablas) — y los table owners
+-- bypasean RLS por default en Postgres — así que sus consultas internas
+-- nunca vuelven a disparar las policies de arriba. Mismo patrón que
+-- is_admin().
+-- ----------------------------------------------------------------------------
+
+create or replace function can_view_room(p_room_id uuid, p_user_id uuid)
+returns boolean
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select exists (
+    select 1 from game_rooms r
+    where r.id = p_room_id
+      and (
+        r.visibility = 'public'
+        or r.host_id = p_user_id
+        or is_admin(p_user_id)
+        or exists (
+          select 1 from game_room_players rp
+          where rp.room_id = r.id and rp.profile_id = p_user_id
+        )
+      )
+  );
+$$;
+
+create or replace function is_match_participant(p_match_id uuid, p_user_id uuid)
+returns boolean
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select exists (
+    select 1 from game_match_players
+    where match_id = p_match_id and profile_id = p_user_id
+  );
+$$;
+
+-- ----------------------------------------------------------------------------
 -- Guard: impide que un usuario se auto-otorgue admin/xp/stats vía UPDATE
 -- directo a su propio profile. Solo el service_role (server) puede tocar
 -- estas columnas; el resto de columnas (username, display_name, avatar_url,
@@ -102,15 +156,7 @@ create policy "games_select_all"
 
 create policy "rooms_select_visible"
   on game_rooms for select
-  using (
-    visibility = 'public'
-    or host_id = auth.uid()
-    or is_admin(auth.uid())
-    or exists (
-      select 1 from game_room_players rp
-      where rp.room_id = game_rooms.id and rp.profile_id = auth.uid()
-    )
-  );
+  using (can_view_room(id, auth.uid()));
 
 create policy "rooms_insert_own"
   on game_rooms for insert
@@ -131,21 +177,7 @@ create policy "rooms_delete_host_while_waiting"
 
 create policy "room_players_select_if_room_visible"
   on game_room_players for select
-  using (
-    exists (
-      select 1 from game_rooms r
-      where r.id = game_room_players.room_id
-        and (
-          r.visibility = 'public'
-          or r.host_id = auth.uid()
-          or is_admin(auth.uid())
-          or exists (
-            select 1 from game_room_players self
-            where self.room_id = r.id and self.profile_id = auth.uid()
-          )
-        )
-    )
-  );
+  using (can_view_room(room_id, auth.uid()));
 
 create policy "room_players_insert_self"
   on game_room_players for insert
@@ -196,33 +228,15 @@ create policy "room_players_delete_own_or_host"
 
 create policy "matches_select_participant"
   on game_matches for select
-  using (
-    is_admin(auth.uid())
-    or exists (
-      select 1 from game_match_players mp
-      where mp.match_id = game_matches.id and mp.profile_id = auth.uid()
-    )
-  );
+  using (is_admin(auth.uid()) or is_match_participant(id, auth.uid()));
 
 create policy "match_players_select_participant"
   on game_match_players for select
-  using (
-    is_admin(auth.uid())
-    or exists (
-      select 1 from game_match_players self
-      where self.match_id = game_match_players.match_id and self.profile_id = auth.uid()
-    )
-  );
+  using (is_admin(auth.uid()) or is_match_participant(match_id, auth.uid()));
 
 create policy "match_events_select_participant"
   on game_events for select
-  using (
-    is_admin(auth.uid())
-    or exists (
-      select 1 from game_match_players mp
-      where mp.match_id = game_events.match_id and mp.profile_id = auth.uid()
-    )
-  );
+  using (is_admin(auth.uid()) or is_match_participant(match_id, auth.uid()));
 
 -- ----------------------------------------------------------------------------
 -- PLAYER STATS / LEADERBOARDS (públicos, de solo lectura)

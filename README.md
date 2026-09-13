@@ -91,6 +91,11 @@ exacto, cada archivo de `supabase/sql/`:
 3. `003_rls.sql` — Row Level Security en todas las tablas
 4. `004_realtime.sql` — qué tablas transmiten cambios por Realtime
 
+**Si tu proyecto ya corrió una versión anterior de `003_rls.sql`** (antes
+del fix de recursión infinita en las policies de salas/partidas), corré
+además `005_fix_rls_recursion.sql` — un proyecto nuevo desde cero no lo
+necesita, `003_rls.sql` ya viene con el fix incorporado.
+
 Podés pegar cada archivo entero y darle "Run". Si algo falla, revisá que
 los anteriores hayan corrido completos antes de reintentar (dependen entre
 sí en ese orden).
@@ -182,6 +187,7 @@ npm run build       # build de producción
 | Login/registro no redirige | `Site URL` / `Redirect URLs` mal configuradas en Supabase Auth | revisar paso 3 |
 | "jugadores online" no se actualiza en vivo | Realtime no habilitado para `profiles` | revisar `004_realtime.sql` corrió, chequear **Database → Replication** |
 | Error de RLS al crear sala/unirse | políticas de `003_rls.sql` no corrieron o corrieron antes que `001`/`002` | re-ejecutar los 4 archivos SQL en orden |
+| `infinite recursion detected in policy for relation "game_room_players"` | tu proyecto corrió una versión vieja de `003_rls.sql` (antes del fix con `can_view_room()`/`is_match_participant()`) | correr `005_fix_rls_recursion.sql` |
 | `is_online` nunca vuelve a `false` | falta `CRON_SECRET` en Vercel, o el cron job no está activo | revisar **Settings → Cron Jobs** y la env var |
 | Build falla por variables de entorno faltantes | alguna página server-side ejecuta una query en build time | marcar la ruta con `export const dynamic = "force-dynamic"` (ver `app/(marketing)/page.tsx`) |
 | `SUPABASE_SERVICE_ROLE_KEY` filtrada en el bundle del cliente | algo importó `lib/supabase/admin.ts` desde un Client Component | el build ya falla solo (por `import "server-only"`) — mové esa lógica a un Server Action/Route Handler |

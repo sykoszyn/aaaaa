@@ -1,23 +1,63 @@
-import { Ban, RotateCw } from "lucide-react";
+import { Ban, Repeat } from "lucide-react";
 import { cn } from "@/utils/cn";
 import type { UnoCard, UnoColor } from "@/lib/games/uno";
 
-const COLOR_STYLES: Record<UnoColor, string> = {
-  red: "bg-[#e33] text-white",
-  yellow: "bg-[#eab308] text-black",
-  green: "bg-[#22b455] text-white",
-  blue: "bg-[#3b82f6] text-white",
+/** Colores de fondo por palo — tonos saturados clásicos de UNO, dibujados
+ * con nuestro propio óvalo/tipografía (no assets ni logo originales). */
+const BG_COLOR: Record<UnoColor, string> = {
+  red: "#E52521",
+  yellow: "#FFC90D",
+  green: "#17A652",
+  blue: "#0B63B0",
 };
 
-function symbolFor(card: UnoCard) {
-  switch (card.value) {
-    case "skip": return <Ban className="size-[42%]" strokeWidth={3} />;
-    case "reverse": return <RotateCw className="size-[42%]" strokeWidth={3} />;
-    case "draw2": return <span className="flex items-center text-[0.85em] font-black">+2</span>;
-    case "wild4": return <span className="flex items-center text-[0.75em] font-black">+4</span>;
-    case "wild": return null;
-    default: return <span className="font-black">{card.value}</span>;
-  }
+const WILD_QUADRANTS: UnoColor[] = ["red", "yellow", "green", "blue"];
+
+function CenterMark({ card }: { card: UnoCard }) {
+  if (card.value === "skip") return <Ban className="h-[52%] w-[52%]" strokeWidth={3.5} />;
+  if (card.value === "reverse") return <Repeat className="h-[48%] w-[48%]" strokeWidth={3.5} />;
+  if (card.value === "draw2") return <span className="text-[0.95em] font-black leading-none">+2</span>;
+  if (card.value === "wild4") return <span className="text-[0.85em] font-black leading-none">+4</span>;
+  return <span className="text-[1.5em] font-black italic leading-none">{card.value}</span>;
+}
+
+function CornerMark({ card, className }: { card: UnoCard; className?: string }) {
+  const label =
+    card.value === "skip" ? (
+      <Ban className="size-[0.9em]" strokeWidth={3.5} />
+    ) : card.value === "reverse" ? (
+      <Repeat className="size-[0.9em]" strokeWidth={3.5} />
+    ) : card.value === "draw2" ? (
+      "+2"
+    ) : card.value === "wild4" ? (
+      "+4"
+    ) : (
+      card.value
+    );
+
+  return (
+    <span className={cn("absolute flex items-center justify-center text-[0.32em] font-black italic text-white drop-shadow-sm", className)}>
+      {label}
+    </span>
+  );
+}
+
+function WildPinwheel() {
+  return (
+    <svg viewBox="0 0 100 100" className="h-[70%] w-[70%]" aria-hidden>
+      {WILD_QUADRANTS.map((color, i) => {
+        const start = i * 90 - 45;
+        const end = start + 90;
+        const toRad = (deg: number) => (deg * Math.PI) / 180;
+        const x1 = 50 + 48 * Math.cos(toRad(start));
+        const y1 = 50 + 48 * Math.sin(toRad(start));
+        const x2 = 50 + 48 * Math.cos(toRad(end));
+        const y2 = 50 + 48 * Math.sin(toRad(end));
+        return <path key={color} d={`M50,50 L${x1},${y1} A48,48 0 0,1 ${x2},${y2} Z`} fill={BG_COLOR[color]} />;
+      })}
+      <circle cx="50" cy="50" r="14" fill="#0c0c14" />
+    </svg>
+  );
 }
 
 interface CardFaceProps {
@@ -58,21 +98,42 @@ export function CardFace({ card, faceDown, size = "md", selected, disabled, onCl
       disabled={disabled || !onClick}
       className={cn(
         SIZES[size],
-        "relative flex items-center justify-center rounded-lg border-2 font-display shadow-card transition-transform duration-150",
-        isWild
-          ? "bg-gradient-to-br from-[#e33] via-[#eab308] via-[#22b455] to-[#3b82f6] text-white"
-          : COLOR_STYLES[card.color as UnoColor],
-        selected ? "-translate-y-2 border-gold ring-2 ring-gold" : "border-white/20",
+        "relative overflow-hidden rounded-xl border-2 border-black/40 font-display text-white shadow-card transition-transform duration-150",
+        selected ? "-translate-y-2 border-gold ring-2 ring-gold" : "",
         onClick && !disabled && "hover:-translate-y-1 cursor-pointer",
         disabled && "opacity-40",
         className,
       )}
+      style={{ backgroundColor: isWild ? "#0c0c14" : BG_COLOR[card.color as UnoColor] }}
     >
-      {isWild && card.value === "wild" ? (
-        <span className="rounded-full bg-black/30 px-2 py-0.5 text-[0.5em] font-black">WILD</span>
-      ) : (
-        symbolFor(card)
+      {!isWild && (
+        <>
+          <CornerMark card={card} className="left-[10%] top-[8%]" />
+          <CornerMark card={card} className="bottom-[8%] right-[10%] rotate-180" />
+        </>
       )}
+
+      <div className="absolute inset-0 flex items-center justify-center">
+        {isWild ? (
+          card.value === "wild4" ? (
+            <div className="relative flex h-full w-full items-center justify-center">
+              <WildPinwheel />
+              <span className="absolute text-[0.85em] font-black text-white drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)]">+4</span>
+            </div>
+          ) : (
+            <WildPinwheel />
+          )
+        ) : (
+          <div
+            className="flex aspect-[1.6/1] w-[86%] -rotate-[24deg] items-center justify-center rounded-[50%] bg-[#faf6ea]"
+            style={{ color: BG_COLOR[card.color as UnoColor] }}
+          >
+            <div className="rotate-[24deg]">
+              <CenterMark card={card} />
+            </div>
+          </div>
+        )}
+      </div>
     </button>
   );
 }

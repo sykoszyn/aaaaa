@@ -9,6 +9,16 @@ import { createClient } from "@/lib/supabase/client";
  * the scale a lobby counter needs, and avoids a filter Realtime can't
  * express (it can only filter on equality of a column's *new* value, not
  * "did this column change").
+ *
+ * Límite conocido: esto solo cuenta transiciones reales del booleano
+ * is_online. Una pestaña que se cierra de golpe nunca dispara ese
+ * "false" (ver lib/rooms/queries.ts sobre por qué las consultas SSR
+ * filtran también por last_seen_at reciente en vez de confiar ciegamente
+ * en is_online) — así que en una sesión muy larga este contador en vivo
+ * puede ir quedando un poco por encima del real hasta el próximo refresh
+ * de la página (que vuelve a pedir el conteo correcto por frescura). Es
+ * un contador decorativo, no algo de lo que dependa la lógica del juego,
+ * así que este margen es aceptable.
  */
 export function useOnlineCount(initialCount: number) {
   const [count, setCount] = useState(initialCount);

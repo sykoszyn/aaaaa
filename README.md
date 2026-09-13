@@ -160,8 +160,13 @@ npm run build       # build de producción
 3. **Deploy**: Vercel detecta Next.js automáticamente (build command
    `next build`, output `.next`). Solo hace falta darle "Deploy".
 4. **Cron job**: `vercel.json` ya declara `/api/cron/mark-offline` corriendo
-   cada minuto — Vercel lo activa solo al detectar el archivo. Confirmá en
-   **Settings → Cron Jobs** que aparezca.
+   una vez por día (los planes **Hobby** de Vercel solo permiten cron jobs
+   diarios — por eso esta frecuencia, no hace falta pagar Plan Pro) —
+   Vercel lo activa solo al detectar el archivo. Confirmá en **Settings →
+   Cron Jobs** que aparezca. No es crítico para que "jugadores online"
+   funcione bien: las consultas que cuentan jugadores online ya filtran
+   por actividad reciente (`last_seen_at`), este cron solo prolija el
+   booleano `is_online` en la base una vez al día.
 5. **Dominio personalizado**: **Settings → Domains** → agregá tu dominio y
    seguí las instrucciones de DNS que te da Vercel (un registro `CNAME` o
    `A`, según el caso). Después, actualizá **Site URL** en Supabase Auth al

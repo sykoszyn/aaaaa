@@ -5,6 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { BanToggleButton } from "@/components/players/ban-toggle-button";
 import { getCurrentProfile } from "@/lib/auth/session";
+import { onlineSinceIso } from "@/lib/rooms/queries";
 import { createAdminClient } from "@/lib/supabase/admin";
 
 export const metadata: Metadata = { title: "Admin" };
@@ -17,7 +18,11 @@ export default async function AdminPage() {
   const [{ count: userCount }, { count: onlineCount }, { count: roomCount }, { count: matchCount }, { data: users }] =
     await Promise.all([
       supabase.from("profiles").select("id", { count: "exact", head: true }),
-      supabase.from("profiles").select("id", { count: "exact", head: true }).eq("is_online", true),
+      supabase
+        .from("profiles")
+        .select("id", { count: "exact", head: true })
+        .eq("is_online", true)
+        .gt("last_seen_at", onlineSinceIso()),
       supabase.from("game_rooms").select("id", { count: "exact", head: true }).in("status", ["waiting", "in_progress"]),
       supabase.from("game_matches").select("id", { count: "exact", head: true }),
       supabase.from("profiles").select("*").order("created_at", { ascending: false }).limit(25),

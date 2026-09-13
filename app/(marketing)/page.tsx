@@ -3,6 +3,7 @@ import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { GameCard } from "@/components/games/game-card";
 import { isGameImplemented } from "@/lib/games";
+import { countOnlinePlayers } from "@/lib/rooms/queries";
 import { createClient } from "@/lib/supabase/server";
 import type { GameSlug } from "@/types/database";
 
@@ -12,10 +13,10 @@ export const dynamic = "force-dynamic";
 
 export default async function MarketingPage() {
   const supabase = await createClient();
-  const [{ data: games }, { count: playerCount }, { count: onlineCount }] = await Promise.all([
+  const [{ data: games }, { count: playerCount }, onlineCount] = await Promise.all([
     supabase.from("games").select("*").order("slug"),
     supabase.from("profiles").select("id", { count: "exact", head: true }),
-    supabase.from("profiles").select("id", { count: "exact", head: true }).eq("is_online", true),
+    countOnlinePlayers(),
   ]);
 
   return (

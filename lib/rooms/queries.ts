@@ -1,5 +1,20 @@
 import { createClient } from "@/lib/supabase/server";
 
+/**
+ * "Online" se define como is_online=true Y un heartbeat reciente — nunca
+ * confiamos solo en el booleano. useOnlineHeartbeat (hooks/use-online-
+ * heartbeat.ts) refresca profiles.last_seen_at cada 25s, así que una
+ * pestaña que se cerró de golpe (sin disparar el pingOffline del unmount)
+ * deja de contar como online en como mucho este margen — sin depender de
+ * un cron corriendo a cada minuto para "corregir" el booleano (Vercel
+ * Hobby solo permite cron jobs diarios; ver vercel.json).
+ */
+const ONLINE_THRESHOLD_MS = 90_000;
+
+export function onlineSinceIso(): string {
+  return new Date(Date.now() - ONLINE_THRESHOLD_MS).toISOString();
+}
+
 export async function listPublicRooms(limit = 12) {
   const supabase = await createClient();
   const { data } = await supabase
@@ -15,7 +30,11 @@ export async function listPublicRooms(limit = 12) {
 
 export async function countOnlinePlayers() {
   const supabase = await createClient();
-  const { count } = await supabase.from("profiles").select("id", { count: "exact", head: true }).eq("is_online", true);
+  const { count } = await supabase
+    .from("profiles")
+    .select("id", { count: "exact", head: true })
+    .eq("is_online", true)
+    .gt("last_seen_at", onlineSinceIso());
 
   return count ?? 0;
 }
@@ -62,9 +81,11 @@ export async function getOnlineFriends(profileId: string) {
 
   const { data: friends } = await supabase
     .from("profiles")
-    .select("id, username, display_name, avatar_url, is_online")
-    .in("id", friendIds)
-    .order("is_online", { ascending: false });
+    .select("id, username, display_name, avatar_url, is_online, last_seen_at")
+    .in("id", friendIds);
 
-  return friends ?? [];
+  const since = onlineSinceIso();
+  return (friends ?? [])
+    .map((f) => ({ ...f, is_online: f.is_online && f.last_seen_at > since }))
+    .sort((a, b) => Number(b.is_online) - Number(a.is_online));
 }

@@ -15,7 +15,6 @@ type MatchRow = Database["public"]["Tables"]["game_matches"]["Row"] & {
   games: { slug: GameSlug };
   game_match_players: MatchPlayerRow[];
 };
-type MatchRowWithLastSeq = MatchRow & { game_events: { seq: number }[] };
 
 /**
  * Every function here runs ONLY on the server (route handlers / server
@@ -137,7 +136,7 @@ export async function getStateForSeat(matchId: string, seat: number | null): Pro
  * llama haya hecho su propia consulta aparte solo para ubicar el asiento —
  * antes el route handler hacía un SELECT propio antes de llamar acá, y esta
  * función volvía a traer la partida completa igual. Ahora hay un solo
- * SELECT: este resuelve el asiento con los mismos datos que ya trajo.
+ * SELECT de la partida: este resuelve el asiento con esos mismos datos.
  */
 export async function applyPlayerMove(
   matchId: string,
@@ -146,17 +145,11 @@ export async function applyPlayerMove(
 ): Promise<EngineResult<{ finished: boolean; steps: unknown[] }>> {
   const supabase = createAdminClient();
 
-  // Trae en un solo viaje de red la partida, sus jugadores Y el seq del
-  // último evento (embebiendo game_events ordenado desc, limit 1) — cada
-  // round trip a Supabase pesa bastante más que el cómputo en sí, así que
-  // cuantos menos, menos lag se siente al jugar.
   const { data: match, error } = await supabase
     .from("game_matches")
-    .select("*, games(slug), game_match_players(*), game_events(seq)")
+    .select("*, games(slug), game_match_players(*)")
     .eq("id", matchId)
-    .order("seq", { foreignTable: "game_events", ascending: false })
-    .limit(1, { foreignTable: "game_events" })
-    .single<MatchRowWithLastSeq>();
+    .single();
 
   if (error || !match) return { ok: false, error: "Partida no encontrada" };
   if (match.status !== "in_progress") return { ok: false, error: "La partida ya terminó" };
@@ -172,7 +165,23 @@ export async function applyPlayerMove(
   }
 
   const move: GameMove = { seat: seatRow.seat, type: moveInput.type, payload: moveInput.payload };
-  const lastSeq = match.game_events[0]?.seq ?? -1;
+
+  // Consulta aparte (chica, sin trucos de embedding) para el seq del
+  // último evento — antes se embebía en el SELECT de arriba ordenando el
+  // recurso anidado, pero esa combinación depende de una opción de
+  // postgrest-js marcada deprecada (foreignTable/referencedTable) y no
+  // vale el riesgo de que falle en el proyecto real por una diferencia de
+  // versión: un round trip más es un costo ínfimo comparado con romper
+  // el juego entero.
+  const lastEvent = await supabase
+    .from("game_events")
+    .select("seq")
+    .eq("match_id", matchId)
+    .order("seq", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  const lastSeq = lastEvent.data?.seq ?? -1;
+
   return runMoveLoop(supabase, matchId, match, game, move, seatRow.seat, lastSeq);
 }
 

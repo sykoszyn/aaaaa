@@ -10,7 +10,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/toast";
 import { useMatchState } from "@/hooks/use-match-state";
-import { postMove } from "@/lib/games/client";
+import { playSteps, postMove } from "@/lib/games/client";
 import { isWildCard } from "@/lib/games/uno/deck";
 import { cn } from "@/utils/cn";
 import type { UnoCard, UnoColor, UnoPlayerView } from "@/lib/games/uno";
@@ -57,7 +57,7 @@ export function UnoTable({ matchId, roomId, seat, initialView, players }: UnoTab
     startTransition(async () => {
       const result = await postMove<UnoPlayerView>(matchId, type, payload);
       if (!result.ok) push({ variant: "error", title: "Movimiento inválido", description: result.error });
-      else applyLocalState(result.state, result.finished);
+      else await playSteps(result.steps, applyLocalState, result.finished);
     });
 
   const handleCardClick = (card: UnoCard) => {

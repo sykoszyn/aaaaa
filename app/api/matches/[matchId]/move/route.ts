@@ -26,10 +26,9 @@ export async function POST(request: Request, { params }: { params: Promise<{ mat
   const result = await applyPlayerMove(matchId, profile.id, parsed.data);
   if (!result.ok) return NextResponse.json({ error: result.error }, { status: 400 });
 
-  // Devolvemos la vista ya calculada del propio asiento para que el cliente
-  // pinte de una el resultado del movimiento (y de la cadena de bots que
-  // pueda haber corrido en el medio) sin esperar un refetch aparte por
-  // Realtime — ese viaje de ida y vuelta extra era la principal causa de
-  // lag percibido en el tablero.
-  return NextResponse.json({ finished: result.data.finished, state: result.data.view });
+  // Devolvemos la vista de CADA paso de la cadena (tu jugada + la de cada
+  // bot que haya respondido antes de que vuelva a ser tu turno), no solo la
+  // final — así el cliente puede animarlas en secuencia en vez de que tu
+  // propia carta quede tapada por la del último bot que jugó en el medio.
+  return NextResponse.json({ finished: result.data.finished, steps: result.data.steps });
 }

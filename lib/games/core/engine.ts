@@ -143,7 +143,7 @@ export async function applyPlayerMove(
   matchId: string,
   profileId: string,
   moveInput: { type: string; payload: unknown },
-): Promise<EngineResult<{ finished: boolean; view: unknown }>> {
+): Promise<EngineResult<{ finished: boolean; steps: unknown[] }>> {
   const supabase = createAdminClient();
 
   // Trae en un solo viaje de red la partida, sus jugadores Y el seq del
@@ -178,17 +178,17 @@ export async function applyPlayerMove(
 
 /**
  * Corre el movimiento del humano y, en cadena, los de cualquier bot cuyo
- * turno siga inmediatamente. Devuelve directamente la vista del asiento que
- * pidió el movimiento —así el cliente actualiza su pantalla con la
- * respuesta del POST, sin esperar el viaje de ida y vuelta extra de un
- * refetch por Realtime.
+ * turno siga inmediatamente. Devuelve la vista del asiento que pidió el
+ * movimiento DESPUÉS DE CADA PASO de la cadena (`steps`), no solo la final:
+ * si el motor resolvía en el mismo pedido tu jugada y la de varios bots
+ * seguidos, la única vista que llegaba a mostrarse era la del último bot —
+ * tu propia carta quedaba tapada sin que la pantalla la mostrara ni una
+ * vez. El cliente anima estos pasos en secuencia (lib/games/client.ts).
  *
- * Los eventos de cada paso (el del humano + los de la cadena de bots) se
- * acumulan en memoria y se insertan en UN solo viaje de red al final, en vez
- * de uno por movimiento — con varios bots seguidos (común si el jugador usa
- * un +2/salteo y le sigue una fila de bots) eso significaba varios round
- * trips extra a Supabase por cada movimiento del jugador, y esa espera en
- * cadena era la causa principal del lag al jugar.
+ * Los eventos de cada paso se acumulan en memoria y se insertan en UN solo
+ * viaje de red al final, en vez de uno por movimiento — con varios bots
+ * seguidos eso significaba varios round trips extra a Supabase por cada
+ * movimiento del jugador.
  */
 async function runMoveLoop(
   supabase: AdminClient,
@@ -198,12 +198,13 @@ async function runMoveLoop(
   firstMove: GameMove,
   viewerSeat: number,
   lastSeq: number,
-): Promise<EngineResult<{ finished: boolean; view: unknown }>> {
+): Promise<EngineResult<{ finished: boolean; steps: unknown[] }>> {
   // `state` is genuinely `unknown` here — GameDefinition's TState is opaque to
   // the generic engine, it only ever gets round-tripped through jsonb.
   let state: unknown = match.state;
   let seq = lastSeq;
   const events: Database["public"]["Tables"]["game_events"]["Insert"][] = [];
+  const steps: unknown[] = [];
 
   let pendingMove: GameMove | null = firstMove;
 
@@ -213,6 +214,7 @@ async function runMoveLoop(
 
     state = game.applyMove(state, pendingMove);
     seq += 1;
+    steps.push(game.toPlayerView(state, viewerSeat));
 
     const actingPlayer = match.game_match_players.find((p) => p.seat === pendingMove!.seat);
     events.push({
@@ -225,7 +227,7 @@ async function runMoveLoop(
 
     if (game.isFinished(state)) {
       await Promise.all([supabase.from("game_events").insert(events), finishMatch(supabase, matchId, match, game, state)]);
-      return { ok: true, data: { finished: true, view: game.toPlayerView(state, viewerSeat) } };
+      return { ok: true, data: { finished: true, steps } };
     }
 
     const nextSeat = game.getActiveSeat(state);
@@ -241,7 +243,7 @@ async function runMoveLoop(
     supabase.from("game_events").insert(events),
     supabase.from("game_matches").update({ state: state as Record<string, unknown> }).eq("id", matchId),
   ]);
-  return { ok: true, data: { finished: false, view: game.toPlayerView(state, viewerSeat) } };
+  return { ok: true, data: { finished: false, steps } };
 }
 
 async function finishMatch(

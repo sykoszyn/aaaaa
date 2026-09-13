@@ -8,7 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/toast";
 import { useMatchState } from "@/hooks/use-match-state";
-import { postMove } from "@/lib/games/client";
+import { playSteps, postMove } from "@/lib/games/client";
 import { allowedEnvidoRaises, allowedTrucoRaise, hasFlor } from "@/lib/games/truco/rules";
 import { cn } from "@/utils/cn";
 import type { EnvidoLevel, TrucoBetLevel, TrucoPlayerView } from "@/lib/games/truco";
@@ -59,7 +59,7 @@ export function TrucoTable({ matchId, roomId, seat, initialView, players }: Truc
     startTransition(async () => {
       const result = await postMove<TrucoPlayerView>(matchId, type, payload);
       if (!result.ok) push({ variant: "error", title: "No se pudo cantar", description: result.error });
-      else applyLocalState(result.state, result.finished);
+      else await playSteps(result.steps, applyLocalState, result.finished);
     });
 
   if (view.finished) {

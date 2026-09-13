@@ -35,26 +35,13 @@ export async function createRoom(_prev: RoomActionState, formData: FormData): Pr
   const profile = await requireProfile();
   const supabase = await createClient();
 
-  // TODO(diagnóstico): getUser() es Next.js hablando con GoTrue (Auth) — no
-  // prueba qué ve Postgres. debug_whoami() es una función RPC (ver mensaje
-  // al usuario) que sí corre a través de PostgREST con el mismo JWT que
-  // usa el insert de abajo, así que su resultado es la prueba real de qué
-  // vale auth.uid() en el momento exacto del insert.
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- RPC diagnóstico temporal, no está en el tipo Database
-  const { data: whoami, error: whoamiError } = await (supabase.rpc as any)("debug_whoami");
-  if (whoamiError || whoami !== profile.id) {
-    return {
-      error: `Diagnóstico: auth.uid() en Postgres=${whoami ?? whoamiError?.message ?? "null"} vs profile.id=${profile.id}`,
-    };
-  }
-
   const { data: game, error: gameError } = await supabase
     .from("games")
     .select("id, min_players, max_players")
     .eq("slug", parsed.data.gameSlug)
     .single();
 
-  if (gameError || !game) return { error: `Juego no encontrado${gameError ? `: ${gameError.message}` : ""}` };
+  if (gameError || !game) return { error: "Juego no encontrado" };
 
   const maxPlayers = Math.min(Math.max(parsed.data.maxPlayers, game.min_players), game.max_players);
 
@@ -66,31 +53,33 @@ export async function createRoom(_prev: RoomActionState, formData: FormData): Pr
       ? { targetScore: parsed.data.targetScore === 15 ? 15 : 30, florEnabled: parsed.data.florEnabled ?? false }
       : {};
 
-  const { data: room, error: roomError } = await supabase
-    .from("game_rooms")
-    .insert({
-      game_id: game.id,
-      host_id: profile.id,
-      visibility: parsed.data.visibility,
-      max_players: maxPlayers,
-      allow_bots: parsed.data.allowBots,
-      settings,
-    })
-    .select("id")
-    .single();
+  // Generamos el id acá en vez de dejar que la DB lo asigne y pedirlo de
+  // vuelta con .select() — un INSERT ... RETURNING bajo RLS exige que la
+  // fila recién insertada también pase la policy de SELECT (can_view_room,
+  // que es SECURITY DEFINER), y esa combinación puntual no evalúa bien la
+  // fila todavía no confirmada en Postgres. Insertando el id nosotros
+  // mismos evitamos depender de RETURNING por completo.
+  const roomId = crypto.randomUUID();
 
-  // TODO(diagnóstico): una vez confirmado el problema real en producción,
-  // volver a los mensajes genéricos — no conviene exponer errores crudos
-  // de Postgres de forma permanente.
-  if (roomError || !room) return { error: `No se pudo crear la sala: ${roomError?.message ?? "sin fila devuelta"}` };
+  const { error: roomError } = await supabase.from("game_rooms").insert({
+    id: roomId,
+    game_id: game.id,
+    host_id: profile.id,
+    visibility: parsed.data.visibility,
+    max_players: maxPlayers,
+    allow_bots: parsed.data.allowBots,
+    settings,
+  });
+
+  if (roomError) return { error: "No se pudo crear la sala" };
 
   const { error: joinError } = await supabase
     .from("game_room_players")
-    .insert({ room_id: room.id, profile_id: profile.id, seat: 0, is_ready: true });
+    .insert({ room_id: roomId, profile_id: profile.id, seat: 0, is_ready: true });
 
-  if (joinError) return { error: `No se pudo unirte a tu propia sala: ${joinError.message}` };
+  if (joinError) return { error: "No se pudo unirte a tu propia sala" };
 
-  redirect(`/rooms/${room.id}`);
+  redirect(`/rooms/${roomId}`);
 }
 
 async function nextFreeSeat(roomId: string): Promise<number> {
